@@ -1,6 +1,19 @@
+databases:
+  - name: organijob-db
+    plan: free
+    databaseName: organijob
+    user: organijob_user
+
 services:
   - type: web
     name: organijob-backend
     runtime: docker
     plan: free
     autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: organijob-db
+          property: connectionString
+      - key: PGSSLMODE
+        value: require

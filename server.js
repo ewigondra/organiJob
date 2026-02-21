@@ -2,32 +2,60 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { Pool } = require('pg');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = __dirname;
-const DATA_DIR = path.join(__dirname, 'data');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
+const DATABASE_URL = process.env.DATABASE_URL;
+const PGSSLMODE = process.env.PGSSLMODE;
 
-function ensureDb() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) {
-    const initial = { users: [], sessions: [], contacts: [] };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2), 'utf8');
-  }
+if (!DATABASE_URL) {
+  console.error('Missing DATABASE_URL. Set it in your environment.');
+  process.exit(1);
 }
 
-function readDb() {
-  ensureDb();
-  const raw = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  return {
-    users: Array.isArray(raw.users) ? raw.users : [],
-    sessions: Array.isArray(raw.sessions) ? raw.sessions : [],
-    contacts: Array.isArray(raw.contacts) ? raw.contacts : [],
-  };
-}
+const shouldUseSSL = PGSSLMODE === 'require' || DATABASE_URL.includes('render.com');
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: shouldUseSSL ? { rejectUnauthorized: false } : undefined,
+});
 
-function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS contacts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      nom TEXT NOT NULL,
+      organisation TEXT NOT NULL,
+      date_appel TIMESTAMPTZ NOT NULL,
+      expertise TEXT,
+      inclusivite TEXT,
+      notes TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_contacts_user_id ON contacts(user_id);');
 }
 
 function sendJson(res, code, payload) {
@@ -89,6 +117,14 @@ function normalizePassword(password) {
   return String(password || '');
 }
 
+function normalizeDate(dateAppel) {
+  const raw = String(dateAppel || '').trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
 function isValidEmail(email) {
   return Boolean(email && email.includes('@') && email.includes('.'));
 }
@@ -107,28 +143,34 @@ function verifyPassword(password, salt, expectedHash) {
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(expectedHash, 'hex'));
 }
 
-function getUserFromAuth(req, db) {
-  const auth = req.headers.authorization || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  if (!token) return null;
-
-  const session = db.sessions.find((s) => s.token === token);
-  if (!session) return null;
-
-  const user = db.users.find((u) => u.id === session.userId);
-  if (!user) return null;
-
-  return { user, token };
-}
-
 function createToken() {
   return crypto.randomBytes(24).toString('hex');
 }
 
-function issueSession(db, userId) {
+async function getUserFromAuth(req) {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  if (!token) return null;
+
+  const result = await pool.query(
+    `
+      SELECT u.id, u.email
+      FROM sessions s
+      JOIN users u ON u.id = s.user_id
+      WHERE s.token = $1
+      LIMIT 1
+    `,
+    [token]
+  );
+
+  if (!result.rows[0]) return null;
+  return { token, user: result.rows[0] };
+}
+
+async function issueSession(userId) {
   const token = createToken();
-  db.sessions = db.sessions.filter((s) => s.userId !== userId);
-  db.sessions.push({ token, userId, createdAt: new Date().toISOString() });
+  await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+  await pool.query('INSERT INTO sessions(token, user_id) VALUES($1, $2)', [token, userId]);
   return token;
 }
 
@@ -160,40 +202,31 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (!isValidPassword(password)) {
-        sendJson(res, 400, { error: 'Mot de passe trop court (8 caractères minimum).' });
+        sendJson(res, 400, { error: 'Mot de passe trop court (8 caracteres minimum).' });
         return;
       }
 
-      const db = readDb();
-      const existing = db.users.find((u) => u.email === email);
-      if (existing && existing.passwordHash && existing.passwordSalt) {
-        sendJson(res, 409, { error: 'Ce compte existe déjà. Connecte-toi.' });
+      const existing = await pool.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [email]);
+      if (existing.rows[0]) {
+        sendJson(res, 409, { error: 'Ce compte existe deja. Connecte-toi.' });
         return;
       }
 
+      const userId = crypto.randomUUID();
       const { hash, salt } = hashPassword(password);
-      let user = existing;
 
-      if (!user) {
-        user = {
-          id: crypto.randomUUID(),
-          email,
-          passwordHash: hash,
-          passwordSalt: salt,
-          createdAt: new Date().toISOString(),
-        };
-        db.users.push(user);
-      } else {
-        user.passwordHash = hash;
-        user.passwordSalt = salt;
-        user.updatedAt = new Date().toISOString();
-      }
+      await pool.query(
+        `
+          INSERT INTO users(id, email, password_hash, password_salt)
+          VALUES($1, $2, $3, $4)
+        `,
+        [userId, email, hash, salt]
+      );
 
-      const token = issueSession(db, user.id);
-      writeDb(db);
-      sendJson(res, 201, { token, user: { id: user.id, email: user.email } });
+      const token = await issueSession(userId);
+      sendJson(res, 201, { token, user: { id: userId, email } });
     } catch {
-      sendJson(res, 400, { error: 'Requête invalide.' });
+      sendJson(res, 400, { error: 'Requete invalide.' });
     }
     return;
   }
@@ -209,64 +242,83 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const db = readDb();
-      const user = db.users.find((u) => u.email === email);
-      if (!user || !user.passwordHash || !user.passwordSalt) {
-        sendJson(res, 404, { error: 'Compte introuvable. Crée un compte.' });
+      const result = await pool.query(
+        `
+          SELECT id, email, password_hash, password_salt
+          FROM users
+          WHERE email = $1
+          LIMIT 1
+        `,
+        [email]
+      );
+
+      const user = result.rows[0];
+      if (!user) {
+        sendJson(res, 404, { error: 'Compte introuvable. Cree un compte.' });
         return;
       }
 
-      const ok = verifyPassword(password, user.passwordSalt, user.passwordHash);
+      const ok = verifyPassword(password, user.password_salt, user.password_hash);
       if (!ok) {
         sendJson(res, 401, { error: 'Email ou mot de passe incorrect.' });
         return;
       }
 
-      const token = issueSession(db, user.id);
-      writeDb(db);
+      const token = await issueSession(user.id);
       sendJson(res, 200, { token, user: { id: user.id, email: user.email } });
     } catch {
-      sendJson(res, 400, { error: 'Requête invalide.' });
+      sendJson(res, 400, { error: 'Requete invalide.' });
     }
     return;
   }
 
   if (req.url === '/api/auth/logout' && req.method === 'POST') {
-    const db = readDb();
     const auth = req.headers.authorization || '';
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-    db.sessions = db.sessions.filter((s) => s.token !== token);
-    writeDb(db);
+    if (token) {
+      await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
+    }
     sendJson(res, 200, { ok: true });
     return;
   }
 
   if (req.url === '/api/sync' && req.method === 'GET') {
-    const db = readDb();
-    const authData = getUserFromAuth(req, db);
-    if (!authData) {
-      sendJson(res, 401, { error: 'Non autorisé.' });
-      return;
+    try {
+      const authData = await getUserFromAuth(req);
+      if (!authData) {
+        sendJson(res, 401, { error: 'Non autorise.' });
+        return;
+      }
+
+      const contactsResult = await pool.query(
+        `
+          SELECT id, user_id AS "userId", nom, organisation,
+                 date_appel AS "dateAppel", expertise, inclusivite, notes,
+                 updated_at AS "updatedAt"
+          FROM contacts
+          WHERE user_id = $1
+          ORDER BY date_appel DESC
+        `,
+        [authData.user.id]
+      );
+
+      sendJson(res, 200, {
+        user: { id: authData.user.id, email: authData.user.email },
+        contacts: contactsResult.rows,
+        syncedAt: new Date().toISOString(),
+      });
+    } catch {
+      sendJson(res, 500, { error: 'Erreur serveur.' });
     }
-
-    const userContacts = db.contacts
-      .filter((c) => c.userId === authData.user.id)
-      .sort((a, b) => new Date(b.dateAppel) - new Date(a.dateAppel));
-
-    sendJson(res, 200, {
-      user: { id: authData.user.id, email: authData.user.email },
-      contacts: userContacts,
-      syncedAt: new Date().toISOString(),
-    });
     return;
   }
 
   if (req.url === '/api/sync' && req.method === 'PUT') {
+    const client = await pool.connect();
     try {
-      const db = readDb();
-      const authData = getUserFromAuth(req, db);
+      const authData = await getUserFromAuth(req);
       if (!authData) {
-        sendJson(res, 401, { error: 'Non autorisé.' });
+        sendJson(res, 401, { error: 'Non autorise.' });
         return;
       }
 
@@ -284,24 +336,37 @@ const server = http.createServer(async (req, res) => {
           userId,
           nom: String(c.nom || '').trim(),
           organisation: String(c.organisation || '').trim(),
-          dateAppel: String(c.dateAppel || '').trim(),
+          dateAppel: normalizeDate(c.dateAppel),
           expertise: String(c.expertise || '').trim(),
           inclusivite: String(c.inclusivite || '').trim(),
           notes: String(c.notes || '').trim(),
-          updatedAt: new Date().toISOString(),
         }))
         .filter((c) => c.nom && c.organisation && c.dateAppel);
 
-      db.contacts = db.contacts.filter((c) => c.userId !== userId).concat(sanitizedContacts);
-      writeDb(db);
+      await client.query('BEGIN');
+      await client.query('DELETE FROM contacts WHERE user_id = $1', [userId]);
 
+      for (const c of sanitizedContacts) {
+        await client.query(
+          `
+            INSERT INTO contacts(id, user_id, nom, organisation, date_appel, expertise, inclusivite, notes, updated_at)
+            VALUES($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+          `,
+          [c.id, c.userId, c.nom, c.organisation, c.dateAppel, c.expertise, c.inclusivite, c.notes]
+        );
+      }
+
+      await client.query('COMMIT');
       sendJson(res, 200, {
         ok: true,
         count: sanitizedContacts.length,
         syncedAt: new Date().toISOString(),
       });
     } catch {
-      sendJson(res, 400, { error: 'Requête invalide.' });
+      await client.query('ROLLBACK');
+      sendJson(res, 400, { error: 'Requete invalide.' });
+    } finally {
+      client.release();
     }
     return;
   }
@@ -319,7 +384,13 @@ const server = http.createServer(async (req, res) => {
   sendFile(res, filepath);
 });
 
-server.listen(PORT, () => {
-  ensureDb();
-  console.log(`OrganiJob server running on http://localhost:${PORT}`);
-});
+initDb()
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`OrganiJob server running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error('Database init failed:', error.message);
+    process.exit(1);
+  });

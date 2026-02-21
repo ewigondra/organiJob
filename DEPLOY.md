@@ -1,4 +1,4 @@
-# Deploiement backend (Render)
+# Deploiement backend (Render + PostgreSQL)
 
 ## Prerequis
 - Un compte Render
@@ -6,15 +6,24 @@
 
 ## Etapes
 1. Pousser le projet sur GitHub.
-2. Dans Render: New + Web Service.
-3. Connecter le repository.
-4. Render detecte `render.yaml` et le `Dockerfile`.
+2. Dans Render: New + Blueprint.
+3. Selectionner le repository.
+4. Render lit `render.yaml` et cree:
+   - 1 base PostgreSQL (`organijob-db`)
+   - 1 Web Service Docker (`organijob-backend`)
 5. Lancer le deploy.
 
-## URL de production
-- Apres deploy, recuperer l'URL Render.
-- Ouvrir l'application depuis cette URL pour utiliser la meme base entre appareils.
+## Variables d'environnement
+- `DATABASE_URL` est branchee automatiquement depuis la base Render.
+- `PGSSLMODE=require` est deja defini dans `render.yaml`.
 
-## Notes importantes
-- Stockage actuel: `data/db.json` (fichier local au conteneur).
-- En production robuste, il faut une vraie base distante (PostgreSQL) pour persistance durable.
+## URL de production
+- Apres deploy, recuperer l'URL du Web Service.
+- Ouvrir l'application via cette URL pour synchroniser entre appareils.
+
+## Verification rapide
+1. Creer un compte (email + mot de passe).
+2. Ajouter un contact.
+3. Ouvrir la meme URL sur un autre appareil.
+4. Se connecter avec le meme compte.
+5. Verifier que le contact est present.
