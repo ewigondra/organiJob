@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OrganiJob - Assistant de recherche d'emploi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div>
+          <h1>OrganiJob</h1>
+          <p>Ton espace pour organiser ta recherche d'emploi avec clarté et impact.</p>
+        </div>
+        <div class="header-badge">Inclusif • Humain • Structuré</div>
+      </header>
+
+      <section class="card auth-card">
+        <form id="login-form" class="auth-form">
+          <label>
+            Adresse email
+            <input id="email-login" type="email" required placeholder="ton.email@exemple.com" />
+          </label>
+          <label>
+            Mot de passe
+            <input id="password-login" type="password" required minlength="8" placeholder="8 caractères minimum" />
+          </label>
+          <button type="submit" class="btn-primary">Se connecter</button>
+          <button type="button" id="register-btn" class="btn-secondary">Créer un compte</button>
+          <button type="button" id="logout-btn" class="btn-secondary">Se déconnecter</button>
+          <button type="button" id="sync-now" class="btn-secondary">Synchroniser maintenant</button>
+        </form>
+        <p id="auth-status" class="auth-status">Non connecté</p>
+        <p id="sync-status" class="sync-status">Connecte-toi pour activer la synchronisation inter appareils.</p>
+      </section>
+
+      <nav class="tabs" aria-label="Navigation principale">
+        <button class="tab is-active" data-tab="suivi">Suivi des contacts</button>
+        <button class="tab" data-tab="ia">IA Booster</button>
+        <button class="tab" data-tab="formations">Formations</button>
+        <button class="tab" data-tab="accompagnement">Accompagnement local</button>
+      </nav>
+
+      <main>
+        <section id="suivi" class="tab-panel is-active">
+          <h2>Suivi des appels et contacts importants</h2>
+          <p class="section-subtitle">Garde une trace de <strong>qui</strong> tu as appelé, <strong>quand</strong>, et dans quel contexte.</p>
+
+          <form id="contact-form" class="card form-grid">
+            <label>
+              Nom du contact
+              <input type="text" id="nom" required placeholder="Ex: Mme Martin" />
+            </label>
+            <label>
+              Organisation
+              <input type="text" id="organisation" required placeholder="Ex: Entreprise ABC" />
+            </label>
+            <label>
+              Date et heure de l'appel
+              <input type="datetime-local" id="dateAppel" required />
+            </label>
+            <label>
+              Domaine d'expertise
+              <input type="text" id="expertise" placeholder="Ex: RH, Data, Marketing" />
+            </label>
+            <label>
+              Valeurs inclusives observées
+              <input type="text" id="inclusivite" placeholder="Ex: diversité, accessibilité" />
+            </label>
+            <label class="full-width">
+              Notes
+              <textarea id="notes" rows="3" placeholder="Résumé de l'échange, prochaine action..."></textarea>
+            </label>
+            <button type="submit" class="btn-primary">Ajouter ce contact</button>
+          </form>
+
+          <div class="card">
+            <div class="list-header">
+              <h3>Historique</h3>
+              <button id="export-contacts" class="btn-secondary" type="button">Exporter en JSON</button>
+            </div>
+            <ul id="contacts-list" class="item-list"></ul>
+          </div>
+        </section>
+
+        <section id="ia" class="tab-panel">
+          <h2>IA générative pour te booster</h2>
+          <p class="section-subtitle">Génère des idées de messages, relances, et plans d'action.</p>
+
+          <div class="card form-grid">
+            <label>
+              Ton objectif immédiat
+              <select id="objectif">
+                <option value="relance">Relancer un recruteur</option>
+                <option value="motivation">Retrouver la motivation</option>
+                <option value="organisation">Mieux organiser la semaine</option>
+                <option value="reseau">Activer son réseau</option>
+              </select>
+            </label>
+            <label>
+              Ton domaine cible
+              <input id="domaine-cible" type="text" placeholder="Ex: Développement web" />
+            </label>
+            <label class="full-width">
+              Contexte (facultatif)
+              <textarea id="contexte-ia" rows="3" placeholder="Ex: J'ai passé 2 entretiens et j'attends une réponse"></textarea>
+            </label>
+            <button type="button" id="generer-ia" class="btn-primary">Générer une suggestion</button>
+          </div>
+
+          <article id="resultat-ia" class="card result-box" aria-live="polite">
+            <p>Ta suggestion apparaîtra ici.</p>
+          </article>
+        </section>
+
+        <section id="formations" class="tab-panel">
+          <h2>Recherche de formations</h2>
+          <p class="section-subtitle">Trouve des formations selon ton objectif et ta ville.</p>
+
+          <div class="card form-grid">
+            <label>
+              Mot-clé
+              <input type="text" id="formation-motcle" placeholder="Ex: data, design, anglais" />
+            </label>
+            <label>
+              Localisation
+              <input type="text" id="formation-ville" placeholder="Ex: Paris, Lyon, Lille" />
+            </label>
+            <button type="button" id="search-formations" class="btn-primary">Rechercher</button>
+          </div>
+
+          <div id="formations-results" class="cards-grid"></div>
+        </section>
+
+        <section id="accompagnement" class="tab-panel">
+          <h2>Services d'accompagnement selon ta localisation</h2>
+          <p class="section-subtitle">Affiche des structures utiles pour t'accompagner dans ta recherche.</p>
+
+          <div class="card form-grid">
+            <label>
+              Ta ville / région
+              <input type="text" id="localisation-input" placeholder="Ex: Marseille, Toulouse" />
+            </label>
+            <button type="button" id="search-services" class="btn-primary">Voir les services</button>
+          </div>
+
+          <div id="services-results" class="cards-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

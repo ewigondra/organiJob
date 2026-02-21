@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: organijob-backend
+    runtime: docker
+    plan: free
+    autoDeploy: true

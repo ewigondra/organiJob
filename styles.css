@@ -1,0 +1,264 @@
+:root {
+  --bg: #f6f3ff;
+  --surface: #fff8f2;
+  --surface-2: #eef9ff;
+  --primary: #3a5a78;
+  --accent: #e98f8f;
+  --text: #27323f;
+  --muted: #5f6d7a;
+  --shadow: 0 10px 30px rgba(45, 59, 74, 0.12);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Outfit", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 12% 20%, #fde8ec 0, transparent 28%),
+    radial-gradient(circle at 90% 8%, #dff4ff 0, transparent 24%),
+    radial-gradient(circle at 70% 82%, #f6efd7 0, transparent 20%),
+    var(--bg);
+  min-height: 100vh;
+}
+
+.app-shell {
+  width: min(1100px, 92vw);
+  margin: 26px auto;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 1.2rem + 2vw, 3rem);
+}
+
+.app-header p {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.header-badge {
+  background: linear-gradient(120deg, #ffdede, #e2f4ff);
+  border: 1px solid #f0f0f0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow);
+}
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+}
+
+.tab {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--primary);
+  background: #e8eef7;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.tab:hover {
+  transform: translateY(-1px);
+}
+
+.tab.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+
+main {
+  margin-top: 18px;
+}
+
+.tab-panel {
+  display: none;
+  animation: fadeIn 220ms ease;
+}
+
+.tab-panel.is-active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.section-subtitle {
+  color: var(--muted);
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+  margin: 14px 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 500;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid #d7dce2;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.btn-primary,
+.btn-secondary {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: linear-gradient(130deg, var(--accent), #f2b0a2);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-secondary {
+  background: #ebf3ff;
+  color: var(--primary);
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.item {
+  background: #fff;
+  border: 1px solid #ebeef2;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.item p {
+  margin: 4px 0;
+}
+
+.result-box {
+  background: var(--surface-2);
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.service-card,
+.formation-card {
+  background: #fff;
+  border: 1px solid #eceff4;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+@media (max-width: 700px) {
+  .app-header {
+    flex-direction: column;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.auth-card {
+  background: linear-gradient(135deg, #fff7ec, #eef7ff);
+}
+
+.auth-form {
+  display: grid;
+  grid-template-columns: 1.3fr repeat(3, auto);
+  gap: 10px;
+  align-items: end;
+}
+
+.auth-status,
+.sync-status {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.sync-status.is-error {
+  color: #b52323;
+}
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: "Outfit", sans-serif;
+}
+
+@media (max-width: 900px) {
+  .auth-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.auth-form {
+  grid-template-columns: 1.2fr 1fr repeat(4, auto);
+}
